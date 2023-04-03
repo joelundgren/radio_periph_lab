@@ -482,7 +482,7 @@ begin
   m_axis_tvalid <= ddsTvalidOut OR tuneDdsTvalidOut;
   
   -- attatch the dds reset to the lsb of reg offset 3
-  ddsReset <= slv_reg2(0);
+  ddsReset <= not slv_reg2(0);
   
   -- set the phase increments to the DDS from the PS the mix their outputs
   dds_i : dds_compiler_0
@@ -558,7 +558,7 @@ begin
     process(s_axi_aclk)
     begin
     if(rising_edge(s_axi_aclk)) then
-        if(ddsReset='1') then
+        if(ddsReset='0') then
              counter_up <= x"00000000";
         else
             counter_up <= counter_up + x"1";
