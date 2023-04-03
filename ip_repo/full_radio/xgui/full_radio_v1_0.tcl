@@ -8,7 +8,17 @@ proc init_gui { IPINST } {
   ipgui::add_param $IPINST -name "C_S00_AXI_BASEADDR" -parent ${Page_0}
   ipgui::add_param $IPINST -name "C_S00_AXI_HIGHADDR" -parent ${Page_0}
 
+  ipgui::add_param $IPINST -name "FREQ_HZ"
 
+}
+
+proc update_PARAM_VALUE.FREQ_HZ { PARAM_VALUE.FREQ_HZ } {
+	# Procedure called to update FREQ_HZ when any of the dependent parameters in the arguments change
+}
+
+proc validate_PARAM_VALUE.FREQ_HZ { PARAM_VALUE.FREQ_HZ } {
+	# Procedure called to validate FREQ_HZ
+	return true
 }
 
 proc update_PARAM_VALUE.C_S00_AXI_DATA_WIDTH { PARAM_VALUE.C_S00_AXI_DATA_WIDTH } {

@@ -16,7 +16,7 @@ entity full_radio_v1_0_S00_AXI is
 	);
 	port (
 		-- Users to add ports here
-        m_axis_tdata : out std_logic_vector(15 downto 0);
+        m_axis_tdata : out std_logic_vector(31 downto 0);
         m_axis_tvalid : out std_logic;
 		-- User ports ends
 		-- Do not modify the ports beyond this line
@@ -118,6 +118,32 @@ architecture arch_imp of full_radio_v1_0_S00_AXI is
 	signal reg_data_out	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 	signal byte_index	: integer;
 	signal aw_en	: std_logic;
+	
+	-- user signals
+  signal rstn           : std_logic;
+  
+  signal ddsTvalidOut : std_logic;
+  signal ddsTdataOut  : std_logic_vector(15 downto 0);
+  signal phaseInc     : std_logic_vector(31 downto 0);
+  signal ddsReset     : std_logic;
+  
+  signal fir1Valid     : std_logic;
+  signal fir2Valid     : std_logic;
+  signal fir1DataOut   : std_logic_vector(15 downto 0);
+  signal fir2DataOut   : std_logic_vector(23 downto 0);
+  
+  signal tuneDdsTvalidOut : std_logic;
+  signal tuneDataOut      : std_logic_vector(31 downto 0);
+  signal tuneDataPs       : std_logic_vector(31 downto 0);
+  
+  signal fir11Valid     : std_logic;
+  signal fir21Valid     : std_logic;
+  signal fir11DataOut   : std_logic_vector(15 downto 0);
+  signal fir21DataOut   : std_logic_vector(23 downto 0);
+  
+  signal mixedData           : std_logic_vector(47 downto 0);
+  
+  signal counter_up: unsigned(31 downto 0);
 
 COMPONENT dds_compiler_0
   PORT (
@@ -129,6 +155,61 @@ COMPONENT dds_compiler_0
     m_axis_data_tdata : OUT STD_LOGIC_VECTOR(15 DOWNTO 0)
   );
     END COMPONENT;
+    
+    COMPONENT dds_compiler_0_1
+  PORT (
+    aclk : IN STD_LOGIC;
+    aresetn : IN STD_LOGIC;
+    s_axis_phase_tvalid : IN STD_LOGIC;
+    s_axis_phase_tdata : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+    m_axis_data_tvalid : OUT STD_LOGIC;
+    m_axis_data_tdata : OUT STD_LOGIC_VECTOR(31 DOWNTO 0) 
+  );
+END COMPONENT;
+
+COMPONENT fir_compiler_1
+  PORT (
+    aclk : IN STD_LOGIC;
+    s_axis_data_tvalid : IN STD_LOGIC;
+    s_axis_data_tready : OUT STD_LOGIC;
+    s_axis_data_tdata : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
+    m_axis_data_tvalid : OUT STD_LOGIC;
+    m_axis_data_tdata : OUT STD_LOGIC_VECTOR(15 DOWNTO 0) 
+  );
+END COMPONENT;
+
+COMPONENT fir_compiler_2
+  PORT (
+    aclk : IN STD_LOGIC;
+    s_axis_data_tvalid : IN STD_LOGIC;
+    s_axis_data_tready : OUT STD_LOGIC;
+    s_axis_data_tdata : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
+    m_axis_data_tvalid : OUT STD_LOGIC;
+    m_axis_data_tdata : OUT STD_LOGIC_VECTOR(23 DOWNTO 0) 
+  );
+END COMPONENT;
+
+COMPONENT fir_compiler_1_1
+  PORT (
+    aclk : IN STD_LOGIC;
+    s_axis_data_tvalid : IN STD_LOGIC;
+    s_axis_data_tready : OUT STD_LOGIC;
+    s_axis_data_tdata : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
+    m_axis_data_tvalid : OUT STD_LOGIC;
+    m_axis_data_tdata : OUT STD_LOGIC_VECTOR(15 DOWNTO 0) 
+  );
+END COMPONENT;
+
+COMPONENT fir_compiler_2_1
+  PORT (
+    aclk : IN STD_LOGIC;
+    s_axis_data_tvalid : IN STD_LOGIC;
+    s_axis_data_tready : OUT STD_LOGIC;
+    s_axis_data_tdata : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
+    m_axis_data_tvalid : OUT STD_LOGIC;
+    m_axis_data_tdata : OUT STD_LOGIC_VECTOR(23 DOWNTO 0) 
+  );
+END COMPONENT;
 
 begin
 	-- I/O Connections assignments
@@ -367,11 +448,11 @@ begin
 	      when b"00" =>
 	        reg_data_out <= slv_reg0;
 	      when b"01" =>
-	        reg_data_out <= x"DEADBEEF";
+	        reg_data_out <= slv_reg1;
 	      when b"10" =>
 	        reg_data_out <= slv_reg2;
 	      when b"11" =>
-	        reg_data_out <= slv_reg3;
+	        reg_data_out <= std_logic_vector(counter_up);
 	      when others =>
 	        reg_data_out  <= (others => '0');
 	    end case;
@@ -397,17 +478,94 @@ begin
 
 
 	-- Add user logic here
-
-your_instance_name : dds_compiler_0
+  -- or both the dds valids to the single valid out to the dac
+  m_axis_tvalid <= ddsTvalidOut OR tuneDdsTvalidOut;
+  
+  -- attatch the dds reset to the lsb of reg offset 3
+  ddsReset <= slv_reg2(0);
+  
+  -- set the phase increments to the DDS from the PS the mix their outputs
+  dds_i : dds_compiler_0
   PORT MAP (
     aclk => s_axi_aclk,
-    aresetn => '1',
+    aresetn => ddsReset,
     s_axis_phase_tvalid => '1',
     s_axis_phase_tdata => slv_reg0,
-    m_axis_data_tvalid => m_axis_tvalid,
-    m_axis_data_tdata => m_axis_tdata
+    m_axis_data_tvalid => ddsTvalidOut,
+    m_axis_data_tdata => ddsTdataOut
+  );
+  
+  dds_i_1 : dds_compiler_0_1
+  PORT MAP (
+    aclk => s_axi_aclk,
+    aresetn => ddsReset,
+    s_axis_phase_tvalid => '1',
+    s_axis_phase_tdata => slv_reg1,
+    m_axis_data_tvalid => tuneDdsTvalidOut,
+    m_axis_data_tdata => tuneDataOut
+  );
+  
+  -- mix the two outputs from the DDSs
+  mixedData <= std_logic_vector(unsigned(ddsTdataOut) * unsigned(tuneDataOut));
+
+  -- two sets of fir filters. 1 for the real part and 1 for the imagenary which are given the mixed output data from the DDSs
+  fir1 : fir_compiler_1
+  PORT MAP (
+    aclk => s_axi_aclk,
+    s_axis_data_tvalid => ddsTvalidOut,
+    s_axis_data_tready => open,
+    s_axis_data_tdata => mixedData(40 downto 25),
+    m_axis_data_tvalid => fir1Valid,
+    m_axis_data_tdata => fir1DataOut
   );
 
+  fir2 : fir_compiler_2
+  PORT MAP (
+    aclk => s_axi_aclk,
+    s_axis_data_tvalid => fir1Valid,
+    s_axis_data_tready => open,
+    s_axis_data_tdata => fir1DataOut,
+    m_axis_data_tvalid => fir2Valid,
+    m_axis_data_tdata => fir2DataOut
+  );
+  
+  fir11 : fir_compiler_1_1
+  PORT MAP (
+    aclk => s_axi_aclk,
+    s_axis_data_tvalid => tuneDdsTvalidOut,
+    s_axis_data_tready => open,
+    s_axis_data_tdata => mixedData(15 downto 0),
+    m_axis_data_tvalid => fir11Valid,
+    m_axis_data_tdata => fir11DataOut
+  );
+
+  fir21 : fir_compiler_2_1
+  PORT MAP (
+    aclk => s_axi_aclk,
+    s_axis_data_tvalid => fir11Valid,
+    s_axis_data_tready => open,
+    s_axis_data_tdata => fir11DataOut,
+    m_axis_data_tvalid => fir21Valid,
+    m_axis_data_tdata => fir21DataOut
+  );
+  
+    -- write the real and imagneary parts of the filtered data to the dac. left and right
+    m_axis_tdata(15 downto 0) <= fir2DataOut(15 downto 0);
+    m_axis_tdata(31 downto 16) <= fir21DataOut(15 downto 0);
+    
+    
+
+    process(s_axi_aclk)
+    begin
+    if(rising_edge(s_axi_aclk)) then
+        if(ddsReset='1') then
+             counter_up <= x"00000000";
+        else
+            counter_up <= counter_up + x"1";
+        end if;
+     end if;
+    end process;
+     --slv_reg3 <= std_logic_vector(counter_up);
 
 	-- User logic ends
 
