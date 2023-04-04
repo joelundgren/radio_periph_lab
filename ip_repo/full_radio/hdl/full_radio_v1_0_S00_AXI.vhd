@@ -141,7 +141,8 @@ architecture arch_imp of full_radio_v1_0_S00_AXI is
   signal fir11DataOut   : std_logic_vector(15 downto 0);
   signal fir21DataOut   : std_logic_vector(23 downto 0);
   
-  signal mixedData           : std_logic_vector(47 downto 0);
+  signal mixedDataR           : std_logic_vector(31 downto 0);
+  signal mixedDataI           : std_logic_vector(31 downto 0);
   
   signal counter_up: unsigned(31 downto 0);
 
@@ -479,7 +480,8 @@ begin
 
 	-- Add user logic here
   -- or both the dds valids to the single valid out to the dac
-  m_axis_tvalid <= ddsTvalidOut OR tuneDdsTvalidOut;
+  --m_axis_tvalid <= ddsTvalidOut OR tuneDdsTvalidOut;
+  m_axis_tvalid <= ddsTvalidOut;
   
   -- attatch the dds reset to the lsb of reg offset 3
   ddsReset <= not slv_reg2(0);
@@ -505,8 +507,10 @@ begin
     m_axis_data_tdata => tuneDataOut
   );
   
-  -- mix the two outputs from the DDSs
-  mixedData <= std_logic_vector(unsigned(ddsTdataOut) * unsigned(tuneDataOut));
+
+  -- mix the two outputs from the DDS
+  mixedDataR <= std_logic_vector(unsigned(ddsTdataOut) * unsigned(tuneDataOut(15 downto 0)));
+  mixedDataI <= std_logic_vector(unsigned(ddsTdataOut) * unsigned(tuneDataOut(31 downto 16)));
 
   -- two sets of fir filters. 1 for the real part and 1 for the imagenary which are given the mixed output data from the DDSs
   fir1 : fir_compiler_1
@@ -514,7 +518,7 @@ begin
     aclk => s_axi_aclk,
     s_axis_data_tvalid => ddsTvalidOut,
     s_axis_data_tready => open,
-    s_axis_data_tdata => mixedData(40 downto 25),
+    s_axis_data_tdata => mixedDataR(31 downto 16),
     m_axis_data_tvalid => fir1Valid,
     m_axis_data_tdata => fir1DataOut
   );
@@ -534,7 +538,7 @@ begin
     aclk => s_axi_aclk,
     s_axis_data_tvalid => tuneDdsTvalidOut,
     s_axis_data_tready => open,
-    s_axis_data_tdata => mixedData(15 downto 0),
+    s_axis_data_tdata => mixedDataI(31 downto 16),
     m_axis_data_tvalid => fir11Valid,
     m_axis_data_tdata => fir11DataOut
   );
